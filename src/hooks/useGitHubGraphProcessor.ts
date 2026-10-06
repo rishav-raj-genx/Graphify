@@ -66,7 +66,10 @@ const THEMES = {
 export function useGitHubGraphProcessor(options: ProcessorOptions) {
   const [imageSrc, setImageSrc] = useState<string | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
-  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const [canvasElement, setCanvasElement] = useState<HTMLCanvasElement | null>(null);
+  const canvasRef = useCallback((node: HTMLCanvasElement | null) => {
+    setCanvasElement(node);
+  }, []);
   const [gridData, setGridData] = useState<number[][]>([]);
   const [dimensions, setDimensions] = useState({ width: 0, height: 0 });
 
@@ -183,9 +186,9 @@ export function useGitHubGraphProcessor(options: ProcessorOptions) {
 
   // Redraw canvas whenever grid data or options change
   useEffect(() => {
-    if (!canvasRef.current || gridData.length === 0) return;
+    if (!canvasElement || gridData.length === 0) return;
     
-    const canvas = canvasRef.current;
+    const canvas = canvasElement;
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
     
@@ -214,7 +217,7 @@ export function useGitHubGraphProcessor(options: ProcessorOptions) {
       });
     });
     
-  }, [gridData, options, dimensions]);
+  }, [gridData, options, dimensions, canvasElement, getColors]);
 
   const handleImageUpload = (fileOrDataUrl: File | string) => {
     if (typeof fileOrDataUrl === 'string') {
@@ -248,8 +251,8 @@ export function useGitHubGraphProcessor(options: ProcessorOptions) {
   ]); // theme and darkMode don't need re-processing, only re-draw which is handled in the other useEffect
 
   const downloadPNG = () => {
-    if (!canvasRef.current) return;
-    const url = canvasRef.current.toDataURL('image/png');
+    if (!canvasElement) return;
+    const url = canvasElement.toDataURL('image/png');
     const a = document.createElement('a');
     a.href = url;
     a.download = 'github-graph.png';
@@ -289,11 +292,11 @@ export function useGitHubGraphProcessor(options: ProcessorOptions) {
   };
 
   const shareImage = async () => {
-    if (!canvasRef.current) return;
+    if (!canvasElement) return;
     
     if (navigator.share) {
       try {
-        canvasRef.current.toBlob(async (blob) => {
+        canvasElement.toBlob(async (blob) => {
           if (!blob) return;
           const file = new File([blob], 'github-graph.png', { type: 'image/png' });
           await navigator.share({

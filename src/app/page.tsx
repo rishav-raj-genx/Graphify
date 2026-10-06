@@ -4,7 +4,7 @@ import React, { useState, useRef, DragEvent, ChangeEvent } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
   Download, Image as ImageIcon, Settings, 
-  Moon, Sun, Share2, UploadCloud, RefreshCw, Palette, Check, X
+  Moon, Sun, Share2, UploadCloud, RefreshCw, Palette, Check, X, Activity
 } from 'lucide-react';
 import ReactCrop, { Crop, PixelCrop } from 'react-image-crop';
 import 'react-image-crop/dist/ReactCrop.css';
@@ -130,7 +130,7 @@ export default function Home() {
         <div className="p-6">
           <div className="flex items-center gap-3 mb-8">
             <div className={`p-2 rounded-lg ${options.isDarkMode ? 'bg-[#238636] text-white' : 'bg-[#2ea043] text-white'}`}>
-              <ImageIcon size={24} />
+              <Activity size={24} />
             </div>
             <h1 className="text-xl font-bold tracking-tight">Graphify</h1>
           </div>
