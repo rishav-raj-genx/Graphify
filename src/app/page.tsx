@@ -4,8 +4,10 @@ import React, { useState, useRef, DragEvent, ChangeEvent } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
   Download, Image as ImageIcon, Settings, 
-  Moon, Sun, Share2, UploadCloud, RefreshCw, Palette
+  Moon, Sun, Share2, UploadCloud, RefreshCw, Palette, Check, X
 } from 'lucide-react';
+import ReactCrop, { Crop, PixelCrop } from 'react-image-crop';
+import 'react-image-crop/dist/ReactCrop.css';
 import { useGitHubGraphProcessor, Theme, ProcessorOptions } from '@/hooks/useGitHubGraphProcessor';
 
 export default function Home() {
@@ -14,10 +16,16 @@ export default function Home() {
     invertColors: false,
     isDarkMode: true,
     contrast: 0,
-    theme: 'green'
+    theme: 'green',
+    customColor: '#8a2be2',
   });
   
   const [isDragging, setIsDragging] = useState(false);
+  
+  const [cropModalSrc, setCropModalSrc] = useState<string | null>(null);
+  const [crop, setCrop] = useState<Crop>();
+  const [completedCrop, setCompletedCrop] = useState<PixelCrop>();
+  const imgRef = useRef<HTMLImageElement>(null);
   
   const {
     canvasRef,
@@ -41,19 +49,68 @@ export default function Home() {
     setIsDragging(false);
   };
 
+  const handleFileForCrop = (file: File) => {
+    if (!file.type.startsWith('image/')) return;
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      if (typeof e.target?.result === 'string') {
+        setCropModalSrc(e.target.result);
+        setCrop(undefined);
+        setCompletedCrop(undefined);
+      }
+    };
+    reader.readAsDataURL(file);
+  };
+
   const onDrop = (e: DragEvent<HTMLDivElement>) => {
     e.preventDefault();
     setIsDragging(false);
     
     if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
-      handleImageUpload(e.dataTransfer.files[0]);
+      handleFileForCrop(e.dataTransfer.files[0]);
     }
   };
 
   const onFileChange = (e: ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files.length > 0) {
-      handleImageUpload(e.target.files[0]);
+      handleFileForCrop(e.target.files[0]);
     }
+  };
+
+  const onApplyCrop = () => {
+    if (!completedCrop || !completedCrop.width || !completedCrop.height || !imgRef.current) {
+      if (cropModalSrc) handleImageUpload(cropModalSrc); 
+      setCropModalSrc(null);
+      return;
+    }
+    
+    const image = imgRef.current;
+    const canvas = document.createElement('canvas');
+    const ctx = canvas.getContext('2d');
+    
+    if (!ctx) return;
+    
+    const scaleX = image.naturalWidth / image.width;
+    const scaleY = image.naturalHeight / image.height;
+    
+    canvas.width = completedCrop.width * scaleX;
+    canvas.height = completedCrop.height * scaleY;
+    
+    ctx.drawImage(
+      image,
+      completedCrop.x * scaleX,
+      completedCrop.y * scaleY,
+      completedCrop.width * scaleX,
+      completedCrop.height * scaleY,
+      0,
+      0,
+      completedCrop.width * scaleX,
+      completedCrop.height * scaleY
+    );
+    
+    const dataUrl = canvas.toDataURL('image/png');
+    handleImageUpload(dataUrl);
+    setCropModalSrc(null);
   };
 
   const updateOption = <K extends keyof ProcessorOptions>(key: K, value: ProcessorOptions[K]) => {
@@ -117,12 +174,12 @@ export default function Home() {
               <label className="text-sm font-semibold flex items-center gap-2">
                 <Palette size={16} /> Theme
               </label>
-              <div className="flex gap-2">
-                {(['green', 'halloween', 'winter'] as Theme[]).map((theme) => (
+              <div className="grid grid-cols-2 gap-2">
+                {(['green', 'halloween', 'winter', 'custom'] as Theme[]).map((theme) => (
                   <button
                     key={theme}
                     onClick={() => updateOption('theme', theme)}
-                    className={`flex-1 py-2 px-3 rounded-md text-xs font-medium transition-all ${
+                    className={`py-2 px-3 rounded-md text-xs font-medium transition-all ${
                       options.theme === theme 
                         ? (options.isDarkMode ? 'bg-gray-700 text-white' : 'bg-gray-200 text-gray-900') 
                         : (options.isDarkMode ? 'bg-[#0d1117] hover:bg-gray-800' : 'bg-[#f6f8fa] hover:bg-gray-100')
@@ -132,6 +189,26 @@ export default function Home() {
                   </button>
                 ))}
               </div>
+              <AnimatePresence>
+                {options.theme === 'custom' && (
+                  <motion.div
+                    initial={{ height: 0, opacity: 0 }}
+                    animate={{ height: 'auto', opacity: 1 }}
+                    exit={{ height: 0, opacity: 0 }}
+                    className="overflow-hidden"
+                  >
+                    <div className="flex items-center gap-3 pt-2">
+                      <label className="text-xs font-semibold">Custom Base Color:</label>
+                      <input 
+                        type="color" 
+                        value={options.customColor}
+                        onChange={(e) => updateOption('customColor', e.target.value)}
+                        className={`w-8 h-8 rounded cursor-pointer border-0 p-0 bg-transparent`}
+                      />
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
             </div>
 
             <div className="pt-4 border-t border-dashed border-gray-500/30 flex flex-col gap-4">
@@ -207,7 +284,7 @@ export default function Home() {
         <div className="flex-1 p-4 md:p-8 flex items-center justify-center overflow-auto relative">
           
           <AnimatePresence mode="wait">
-            {!hasImage ? (
+            {!hasImage && !cropModalSrc ? (
               <motion.div
                 key="upload-zone"
                 initial={{ opacity: 0, scale: 0.95 }}
@@ -241,6 +318,46 @@ export default function Home() {
                   accept="image/*" 
                   className="hidden" 
                 />
+              </motion.div>
+            ) : cropModalSrc ? (
+              <motion.div
+                key="crop-modal"
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -20 }}
+                className={`p-6 rounded-xl shadow-2xl relative max-w-full flex flex-col items-center ${
+                  options.isDarkMode ? 'bg-[#161b22] shadow-black/50' : 'bg-white shadow-gray-200/50'
+                }`}
+              >
+                <h2 className="text-lg font-bold mb-4">Crop Image</h2>
+                <div className="max-h-[60vh] overflow-auto rounded-lg border border-gray-700">
+                  <ReactCrop 
+                    crop={crop} 
+                    onChange={(c) => setCrop(c)}
+                    onComplete={(c) => setCompletedCrop(c)}
+                  >
+                    <img 
+                      ref={imgRef}
+                      src={cropModalSrc} 
+                      alt="Crop target" 
+                      className="max-w-full"
+                    />
+                  </ReactCrop>
+                </div>
+                <div className="flex gap-4 mt-6">
+                  <button 
+                    onClick={() => setCropModalSrc(null)}
+                    className="flex items-center gap-2 py-2 px-4 rounded-md text-sm font-semibold border border-gray-600 hover:bg-gray-800 text-gray-300 transition-colors"
+                  >
+                    <X size={16} /> Cancel
+                  </button>
+                  <button 
+                    onClick={onApplyCrop}
+                    className="flex items-center gap-2 py-2 px-4 rounded-md text-sm font-semibold bg-[#238636] hover:bg-[#2ea043] text-white transition-colors"
+                  >
+                    <Check size={16} /> Apply Crop & Generate
+                  </button>
+                </div>
               </motion.div>
             ) : (
               <motion.div

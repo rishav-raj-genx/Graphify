@@ -1,6 +1,6 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
 
-export type Theme = 'green' | 'halloween' | 'winter';
+export type Theme = 'green' | 'halloween' | 'winter' | 'custom';
 
 export interface ProcessorOptions {
   resolution: number;
@@ -8,6 +8,44 @@ export interface ProcessorOptions {
   isDarkMode: boolean;
   contrast: number;
   theme: Theme;
+  customColor?: string;
+}
+
+function hexToRgb(hex: string) {
+  const c = hex.replace('#', '');
+  return {
+    r: parseInt(c.substring(0, 2), 16) || 0,
+    g: parseInt(c.substring(2, 4), 16) || 0,
+    b: parseInt(c.substring(4, 6), 16) || 0
+  };
+}
+
+function rgbToHex(r: number, g: number, b: number) {
+  return '#' + [r, g, b].map(x => {
+    const hex = Math.round(x).toString(16);
+    return hex.length === 1 ? '0' + hex : hex;
+  }).join('');
+}
+
+function interpolateColor(color1: string, color2: string, factor: number) {
+  const c1 = hexToRgb(color1);
+  const c2 = hexToRgb(color2);
+  return rgbToHex(
+    c1.r + factor * (c2.r - c1.r),
+    c1.g + factor * (c2.g - c1.g),
+    c1.b + factor * (c2.b - c1.b)
+  );
+}
+
+function generateCustomPalette(baseColor: string, isDarkMode: boolean) {
+  const empty = isDarkMode ? '#161b22' : '#ebedf0';
+  return [
+    empty,
+    interpolateColor(empty, baseColor, 0.4),
+    interpolateColor(empty, baseColor, 0.6),
+    interpolateColor(empty, baseColor, 0.8),
+    baseColor,
+  ];
 }
 
 const THEMES = {
@@ -31,6 +69,14 @@ export function useGitHubGraphProcessor(options: ProcessorOptions) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [gridData, setGridData] = useState<number[][]>([]);
   const [dimensions, setDimensions] = useState({ width: 0, height: 0 });
+
+  const getColors = useCallback(() => {
+    if (options.theme === 'custom' && options.customColor) {
+      return generateCustomPalette(options.customColor, options.isDarkMode);
+    }
+    const themeKey = options.theme === 'custom' ? 'green' : options.theme;
+    return THEMES[themeKey][options.isDarkMode ? 'dark' : 'light'];
+  }, [options.theme, options.customColor, options.isDarkMode]);
 
   const processImage = useCallback(
     (src: string) => {
@@ -143,7 +189,7 @@ export function useGitHubGraphProcessor(options: ProcessorOptions) {
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
     
-    const colors = THEMES[options.theme][options.isDarkMode ? 'dark' : 'light'];
+    const colors = getColors();
     
     // GitHub graph styling
     const GAP = 3;
@@ -170,8 +216,13 @@ export function useGitHubGraphProcessor(options: ProcessorOptions) {
     
   }, [gridData, options, dimensions]);
 
-  const handleImageUpload = (file: File) => {
-    if (!file.type.startsWith('image/')) return;
+  const handleImageUpload = (fileOrDataUrl: File | string) => {
+    if (typeof fileOrDataUrl === 'string') {
+      setImageSrc(fileOrDataUrl);
+      processImage(fileOrDataUrl);
+      return;
+    }
+    if (!fileOrDataUrl.type.startsWith('image/')) return;
     const reader = new FileReader();
     reader.onload = (e) => {
       if (typeof e.target?.result === 'string') {
@@ -179,7 +230,7 @@ export function useGitHubGraphProcessor(options: ProcessorOptions) {
         processImage(e.target.result);
       }
     };
-    reader.readAsDataURL(file);
+    reader.readAsDataURL(fileOrDataUrl);
   };
 
   // Re-process when options change but we have an image
@@ -208,7 +259,7 @@ export function useGitHubGraphProcessor(options: ProcessorOptions) {
   const downloadSVG = () => {
     if (gridData.length === 0) return;
     
-    const colors = THEMES[options.theme][options.isDarkMode ? 'dark' : 'light'];
+    const colors = getColors();
     const GAP = 3;
     const BLOCK_SIZE = 12;
     const RADIUS = 2;
